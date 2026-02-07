@@ -11,7 +11,7 @@ const setCors = (req, res) => {
     ];
 
     // Smart origin check
-    if (origin && allowedOrigins.some(o => origin.startsWith(o))) {
+    if (origin && (allowedOrigins.some(o => origin.startsWith(o)) || origin.endsWith('.vercel.app'))) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
         res.setHeader('Access-Control-Allow-Origin', '*');
