@@ -1,23 +1,9 @@
 ﻿const express = require('express');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config();
-
-const { testConnection, syncDatabase } = require('./models');
-const authRoutes = require('./routes/auth');
-const absensiRoutes = require('./routes/absensi');
-const cutiRoutes = require('./routes/cuti');
-const koreksiRoutes = require('./routes/koreksi');
-const profileRoutes = require('./routes/profile');
-const userRoutes = require('./routes/user');
-const jadwalRoutes = require('./routes/jadwal');
-const notificationsRoutes = require('./routes/notifications');
-const shiftRoutes = require('./routes/shift');
-const shiftChangeRoutes = require('./routes/shiftChangeRoutes');
-const outletRoutes = require('./routes/outlet');
-
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,14 +13,6 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
     contentSecurityPolicy: false
 }));
-
-// Global Rate Limiting
-const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
-    message: { success: false, error: { message: 'Too many requests' } }
-});
-app.use(globalLimiter);
 
 // CORS
 const allowedOrigins = process.env.FRONTEND_URL
@@ -57,78 +35,110 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files
-const uploadsPath = path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadsPath));
-
-// DB Init State
+// DB Init State (Lazy Load)
 let isDbInitialized = false;
-let dbInitError = null;
+let dbModels = null;
 
 const initializeApp = async () => {
-    if (isDbInitialized) return;
+    if (isDbInitialized) return dbModels;
     try {
-        await testConnection();
-        // In serverless, we ONLY test connection. We don't sync on every request.
+        console.log('Loading database models...');
+        // Defer requiring models to prevent crashes at require-time
+        dbModels = require('./models');
+
+        console.log('Testing database connection...');
+        await dbModels.testConnection();
+
         if (process.env.VERCEL !== '1') {
-            await syncDatabase();
+            await dbModels.syncDatabase();
         }
+
         isDbInitialized = true;
+        return dbModels;
     } catch (error) {
-        dbInitError = error;
+        console.error('Initialization error:', error.message);
         throw error;
     }
 };
 
-// Middleware to Ensure DB is ready
-app.use(async (req, res, next) => {
-    if (req.path === '/api/health' || req.path === '/health') return next();
-
+// Lazy-loaded routes middleware
+const loadRoutes = (req, res, next) => {
     try {
-        await initializeApp();
-        next();
-    } catch (error) {
-        res.status(503).json({
-            success: false,
-            error: { message: 'Database connection failed', details: error.message }
-        });
-    }
-});
+        const authRoutes = require('./routes/auth');
+        const absensiRoutes = require('./routes/absensi');
+        const cutiRoutes = require('./routes/cuti');
+        const koreksiRoutes = require('./routes/koreksi');
+        const profileRoutes = require('./routes/profile');
+        const userRoutes = require('./routes/user');
+        const jadwalRoutes = require('./routes/jadwal');
+        const notificationsRoutes = require('./routes/notifications');
+        const shiftRoutes = require('./routes/shift');
+        const shiftChangeRoutes = require('./routes/shiftChangeRoutes');
+        const outletRoutes = require('./routes/outlet');
 
-// Routes
+        app.use('/api/auth', authRoutes);
+        app.use('/api/absensi', absensiRoutes);
+        app.use('/api/cuti', cutiRoutes);
+        app.use('/api/koreksi', koreksiRoutes);
+        app.use('/api/profile', profileRoutes);
+        app.use('/api/users', userRoutes);
+        app.use('/api/shifts', shiftRoutes);
+        app.use('/api/shift-change', shiftChangeRoutes);
+        app.use('/api/jadwal', jadwalRoutes);
+        app.use('/api/outlets', outletRoutes);
+        app.use('/api/notifications', notificationsRoutes);
+
+        next();
+    } catch (e) {
+        next(e);
+    }
+};
+
+// Health check always works
 app.get('/api/health', async (req, res) => {
     try {
         await initializeApp();
         res.json({ success: true, db: 'connected', env: process.env.NODE_ENV });
     } catch (e) {
-        res.json({ success: true, db: 'error', error: e.message });
+        res.json({ success: true, db: 'error', error: e.message, env_check: !!process.env.DB_HOST });
     }
 });
 
 app.get('/health', (req, res) => res.json({ status: 'awake' }));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/absensi', absensiRoutes);
-app.use('/api/cuti', cutiRoutes);
-app.use('/api/koreksi', koreksiRoutes);
-app.use('/api/profile', profileRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/shifts', shiftRoutes);
-app.use('/api/shift-change', shiftChangeRoutes);
-app.use('/api/jadwal', jadwalRoutes);
-app.use('/api/outlets', outletRoutes);
-app.use('/api/notifications', notificationsRoutes);
+// Register routes only after DB check
+app.use(async (req, res, next) => {
+    if (req.path.startsWith('/api/health') || req.path === '/health') return next();
+    try {
+        await initializeApp();
+        next();
+    } catch (error) {
+        res.status(503).json({ success: false, error: 'Database connection failed' });
+    }
+});
+
+// Load actual business routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/absensi', require('./routes/absensi'));
+app.use('/api/cuti', require('./routes/cuti'));
+app.use('/api/koreksi', require('./routes/koreksi'));
+app.use('/api/profile', require('./routes/profile'));
+app.use('/api/users', require('./routes/user'));
+app.use('/api/shifts', require('./routes/shift'));
+app.use('/api/shift-change', require('./routes/shiftChangeRoutes'));
+app.use('/api/jadwal', require('./routes/jadwal'));
+app.use('/api/outlets', require('./routes/outlet'));
+app.use('/api/notifications', require('./routes/notifications'));
+
+// Static files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Error Handler
 app.use((err, req, res, next) => {
-    console.error(err);
-    res.status(err.status || 500).json({
-        success: false,
-        error: { message: err.message || 'Internal Server Error' }
-    });
+    console.error('SERVER ERROR:', err);
+    res.status(500).json({ success: false, error: err.message });
 });
 
-// Non-Vercel Listen
 if (process.env.VERCEL !== '1') {
     initializeApp().then(() => {
         app.listen(PORT, () => console.log(`✓ Server on ${PORT}`));
