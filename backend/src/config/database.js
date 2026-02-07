@@ -3,6 +3,12 @@ const { Sequelize } = require('sequelize');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+try {
+  console.log('PG Path:', require.resolve('pg'));
+} catch (e) {
+  console.error('PG Resolution Failed:', e.message);
+}
+
 const sequelize = new Sequelize(
   process.env.DB_NAME,
   process.env.DB_USER,
