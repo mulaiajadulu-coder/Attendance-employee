@@ -14,12 +14,31 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-app.use(cors({
-    origin: true, // Allow any origin
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+// Custom CORS Middleware (Manual Handling for Vercel)
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+
+    // Allow any origin that comes in (Reflection)
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        // Fallback for tools like Postman
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    // Handle Preflight (OPTIONS) immediately without touching DB
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+
+    next();
+});
+
+// app.use(cors(...)); // Disabled in favor of manual handling
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -106,11 +125,15 @@ app.get('/', (req, res) => {
 
 // Register routes only after DB check
 app.use(async (req, res, next) => {
-    if (req.path.startsWith('/api/health') || req.path === '/health') return next();
+    // Skip DB check for Health, Root, and OPTIONS (Preflight)
+    if (req.path.startsWith('/api/health') || req.path === '/health' || req.path === '/' || req.method === 'OPTIONS') {
+        return next();
+    }
     try {
         await initializeApp();
         next();
     } catch (error) {
+        console.error('DB Init Middleware Error:', error);
         res.status(503).json({ success: false, error: 'Database connection failed' });
     }
 });
