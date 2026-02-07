@@ -7,7 +7,10 @@ const path = require('path');
 
 const saveBase64Image = (base64String, subDir = 'profiles') => {
     try {
-        const uploadDir = path.join(__dirname, '../../uploads', subDir);
+        const isVercel = process.env.VERCEL === '1';
+        const rootDir = isVercel ? '/tmp' : path.join(__dirname, '../../uploads');
+        const uploadDir = path.join(rootDir, subDir);
+
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -25,7 +28,8 @@ const saveBase64Image = (base64String, subDir = 'profiles') => {
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
         const filePath = path.join(uploadDir, fileName);
         fs.writeFileSync(filePath, base64Data, 'base64');
-        return `uploads/${subDir}/${fileName}`;
+
+        return isVercel ? `tmp/${subDir}/${fileName}` : `uploads/${subDir}/${fileName}`;
     } catch (error) {
         console.error('Save Image Error:', error);
         return null;

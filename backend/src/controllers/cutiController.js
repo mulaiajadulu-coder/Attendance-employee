@@ -7,7 +7,10 @@ const path = require('path');
 const saveBase64File = (base64String, subDir = 'cuti') => {
     if (!base64String || !base64String.startsWith('data:')) return base64String;
     try {
-        const uploadDir = path.join(__dirname, '../../uploads', subDir);
+        const isVercel = process.env.VERCEL === '1';
+        const rootDir = isVercel ? '/tmp' : path.join(__dirname, '../../uploads');
+        const uploadDir = path.join(rootDir, subDir);
+
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -22,7 +25,7 @@ const saveBase64File = (base64String, subDir = 'cuti') => {
         const filePath = path.join(uploadDir, fileName);
 
         fs.writeFileSync(filePath, base64Data, 'base64');
-        return `uploads/${subDir}/${fileName}`;
+        return isVercel ? `tmp/${subDir}/${fileName}` : `uploads/${subDir}/${fileName}`;
     } catch (error) {
         console.error('Save File Error:', error);
         return null;

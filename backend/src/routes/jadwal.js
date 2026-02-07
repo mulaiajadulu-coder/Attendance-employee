@@ -4,7 +4,22 @@ const jadwalController = require('../controllers/jadwalController');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/temp/' });
+const isVercel = process.env.VERCEL === '1';
+const upload = multer({
+    storage: isVercel ? multer.memoryStorage() : multer.diskStorage({
+        destination: function (req, file, cb) {
+            const fs = require('fs');
+            const path = 'uploads/temp/';
+            if (!fs.existsSync(path)) {
+                fs.mkdirSync(path, { recursive: true });
+            }
+            cb(null, path);
+        },
+        filename: function (req, file, cb) {
+            cb(null, Date.now() + '-' + file.originalname);
+        }
+    })
+});
 
 router.use(authenticate);
 

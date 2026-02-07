@@ -29,6 +29,10 @@ const getTodayStr = (date = new Date()) => {
 // Logger Helper
 const logMonitoring = (msg) => {
     try {
+        if (process.env.VERCEL === '1') {
+            console.log(`[MONITORING] ${msg}`); // Use console log on Vercel
+            return;
+        }
         const logPath = path.join(__dirname, '../../monitoring_debug.log');
         const timestamp = new Date().toISOString();
         fs.appendFileSync(logPath, `[${timestamp}] ${msg}\n`);
@@ -40,8 +44,11 @@ const logMonitoring = (msg) => {
 // Helper: Save Base64 Image to File
 const saveBase64Image = (base64String, subDir = 'absensi') => {
     try {
-        // Ensure directory exists
-        const uploadDir = path.join(__dirname, '../../uploads', subDir);
+        const isVercel = process.env.VERCEL === '1';
+        // On Vercel, use /tmp. On local, use uploads/
+        const rootDir = isVercel ? '/tmp' : path.join(__dirname, '../../uploads');
+        const uploadDir = path.join(rootDir, subDir);
+
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -67,7 +74,7 @@ const saveBase64Image = (base64String, subDir = 'absensi') => {
         const filePath = path.join(uploadDir, fileName);
 
         fs.writeFileSync(filePath, base64Data, 'base64');
-        return `uploads/${subDir}/${fileName}`;
+        return isVercel ? `tmp/${subDir}/${fileName}` : `uploads/${subDir}/${fileName}`;
     } catch (error) {
         console.error('Save Image Error:', error);
         return null;
