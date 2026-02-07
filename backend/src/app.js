@@ -14,29 +14,25 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-// Custom CORS Middleware (Manual Handling for Vercel)
+// Custom CORS Middleware IS HANDLED IN api/index.js FOR VERCEL
+// We disable it here to prevent header conflicts (Wildcard + Credentials = Error)
+/*
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-
-    // Allow any origin that comes in (Reflection)
     if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
-        // Fallback for tools like Postman
         res.setHeader('Access-Control-Allow-Origin', '*');
     }
-
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    // Handle Preflight (OPTIONS) immediately without touching DB
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
-
     next();
 });
+*/
 
 // app.use(cors(...)); // Disabled in favor of manual handling
 

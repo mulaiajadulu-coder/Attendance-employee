@@ -32,6 +32,19 @@ module.exports = async (req, res) => {
         return;
     }
 
+    // DIAGNOSTIC ROUTE: /api/ping
+    // Provides immediate confirmation that the server function is alive and CORS is working.
+    if (req.url === '/api/ping') {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+            message: 'PONG',
+            status: 'ALIVE',
+            timestamp: new Date().toISOString()
+        }));
+        return;
+    }
+
     try {
         // 2. Load Modules ONLY when request comes (Lazy Loading)
         // This prevents "Cold Start" crashes from killing the whole function
