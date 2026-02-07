@@ -151,18 +151,15 @@ app.use(async (req, res, next) => {
     }
 });
 
-// Load actual business routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/absensi', require('./routes/absensi'));
-app.use('/api/cuti', require('./routes/cuti'));
-app.use('/api/koreksi', require('./routes/koreksi'));
-app.use('/api/profile', require('./routes/profile'));
-app.use('/api/users', require('./routes/user'));
-app.use('/api/shifts', require('./routes/shift'));
-app.use('/api/shift-change', require('./routes/shiftChangeRoutes'));
-app.use('/api/jadwal', require('./routes/jadwal'));
-app.use('/api/outlets', require('./routes/outlet'));
-app.use('/api/notifications', require('./routes/notifications'));
+// Use Lazy Loading Middleware for Routes
+app.use(loadRoutes);
+
+/* 
+// Old Eager Loading (Disabled to prevent startup crash)
+// app.use('/api/auth', require('./routes/auth'));
+// app.use('/api/absensi', require('./routes/absensi'));
+// ... 
+*/
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
