@@ -1,7 +1,9 @@
-// Force Vercel to bundle pg
-require('pg');
 
 try {
+    // Force Vercel to bundle pg
+    require('pg');
+
+    // Attempt to load the app
     const app = require('../src/app');
 
     // Vercel Entry Point
@@ -22,7 +24,8 @@ try {
             console.error('RUNTIME CRASH:', error);
             res.status(500).json({
                 error: 'RUNTIME_CRASH',
-                message: error.message
+                message: error.message,
+                stack: error.stack
             });
         }
     };
@@ -36,7 +39,7 @@ try {
         // Essential CORS for Fallback
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization');
 
         if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -44,7 +47,7 @@ try {
             error: 'CRITICAL_STARTUP_CRASH',
             message: error.message,
             stack: error.stack,
-            hint: 'Dependencies might be missing. Checked: pg'
+            hint: 'Dependencies might be missing. Checked: pg. Check logs for more info.'
         });
     });
     module.exports = fallbackApp;
