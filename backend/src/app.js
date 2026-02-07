@@ -41,13 +41,24 @@ const globalLimiter = rateLimit({
 app.use(globalLimiter);
 
 // Middleware
-const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [];
+const allowedOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map(o => o.trim().replace(/\/$/, ''))
+    : [];
+
 app.use(cors({
     origin: function (origin, callback) {
+        // allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || origin === 'http://localhost:5173') {
+
+        const normalizedOrigin = origin.trim().replace(/\/$/, '');
+        const isAllowed = allowedOrigins.includes(normalizedOrigin) ||
+            normalizedOrigin === 'http://localhost:5173' ||
+            normalizedOrigin.endsWith('.vercel.app'); // Temporarily lax for debugging
+
+        if (isAllowed) {
             callback(null, true);
         } else {
+            console.error(`CORS blocked for origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -90,39 +101,40 @@ const initializeApp = async () => {
 
 // Middleware to ensure DB is initialized (Serverless safe)
 app.use(async (req, res, next) => {
-    // If it's the health check, don't crash the whole thing, just let it through
-    if (req.path === '/api/health' || req.path === '/health') {
-        return next();
-    }
+    if (req.path === '/api/health' || req.path === '/health') return next();
 
-    if (!isDbInitialized) {
-        try {
-            await initializeApp();
-            next();
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                error: {
-                    code: 'DATABASE_INIT_ERROR',
-                    message: 'Failed to connect to database',
-                    details: error.message
-                }
-            });
-        }
-    } else {
+    try {
+        await initializeApp();
         next();
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'DATABASE_INIT_ERROR',
+                message: 'Gagal terhubung ke database. Cek konfigurasi env.',
+                details: error.message
+            }
+        });
     }
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+    let dbStatus = 'waiting';
+    try {
+        await initializeApp();
+        dbStatus = 'connected';
+    } catch (e) {
+        dbStatus = 'error: ' + e.message;
+    }
+
     res.json({
         success: true,
         message: 'Server is running',
-        db_connected: isDbInitialized,
-        db_error: dbInitError ? dbInitError.message : null,
-        timestamp: new Date().toISOString(),
-        env: process.env.NODE_ENV
+        db_status: dbStatus,
+        env: process.env.NODE_ENV,
+        frontend_url_config: process.env.FRONTEND_URL,
+        timestamp: new Date().toISOString()
     });
 });
 
