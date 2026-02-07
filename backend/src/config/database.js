@@ -33,8 +33,18 @@ const testConnection = async () => {
     console.log('✓ Database connection established successfully');
   } catch (error) {
     console.error('✗ Unable to connect to database:', error.message);
-    process.exit(1);
+    throw error; // Let the caller handle it instead of exiting the process
   }
 };
+
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) {
+  sequelize.options.dialectOptions = {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false // Necessary for many cloud DB providers like Supabase/Render
+    }
+  };
+}
 
 module.exports = { sequelize, testConnection };

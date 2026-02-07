@@ -11,7 +11,7 @@ const cutiRoutes = require('./routes/cuti');
 const koreksiRoutes = require('./routes/koreksi');
 const profileRoutes = require('./routes/profile');
 const userRoutes = require('./routes/user');
-const jadwalRoutes = require('./routes/jadwal'); // Added
+const jadwalRoutes = require('./routes/jadwal');
 const notificationsRoutes = require('./routes/notifications');
 const shiftRoutes = require('./routes/shift');
 const shiftChangeRoutes = require('./routes/shiftChangeRoutes');
@@ -31,8 +31,8 @@ app.use(helmet({
 
 // Global Rate Limiting
 const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // limit each IP to 1000 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 1000,
     message: {
         success: false,
         error: { code: 'TOO_MANY_REQUESTS', message: 'Terlalu banyak permintaan, silakan coba lagi nanti.' }
@@ -44,7 +44,6 @@ app.use(globalLimiter);
 const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [];
 app.use(cors({
     origin: function (origin, callback) {
-        // allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         if (allowedOrigins.indexOf(origin) !== -1 || origin === 'http://localhost:5173') {
             callback(null, true);
@@ -57,15 +56,12 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 const uploadsPath = path.join(__dirname, '../uploads');
-console.log('Serving uploads from:', uploadsPath);
-app.use('/uploads', (req, res, next) => {
-    console.log(`[UPLOADS REQ] ${req.method} ${req.path}`);
-    next();
-}, express.static(uploadsPath));
+app.use('/uploads', express.static(uploadsPath));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
     next();
@@ -80,6 +76,8 @@ const initializeApp = async () => {
     try {
         console.log('Initializing database connection...');
         await testConnection();
+        // Skip sync in production serverless if db is already seeded
+        // But for free tier/dev, it's safer to keep it for now.
         await syncDatabase();
         isDbInitialized = true;
         console.log('✓ Database initialized successfully');
@@ -92,14 +90,23 @@ const initializeApp = async () => {
 
 // Middleware to ensure DB is initialized (Serverless safe)
 app.use(async (req, res, next) => {
-    if (process.env.VERCEL === '1' && !isDbInitialized) {
+    // If it's the health check, don't crash the whole thing, just let it through
+    if (req.path === '/api/health' || req.path === '/health') {
+        return next();
+    }
+
+    if (!isDbInitialized) {
         try {
             await initializeApp();
             next();
         } catch (error) {
             res.status(500).json({
                 success: false,
-                error: { code: 'DATABASE_INIT_ERROR', message: 'Failed to connect to database' }
+                error: {
+                    code: 'DATABASE_INIT_ERROR',
+                    message: 'Failed to connect to database',
+                    details: error.message
+                }
             });
         }
     } else {
@@ -107,7 +114,7 @@ app.use(async (req, res, next) => {
     }
 });
 
-// Health check endpoint (moved under /api for consistency with Vercel routing)
+// Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
@@ -119,14 +126,12 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Backward compatibility or alternative health check
 app.get('/health', (req, res) => {
     res.json({ success: true, message: 'Server is awake' });
 });
 
 // API Routes
 app.use('/api/auth', authRoutes);
-// ... (rest of routes preserved)
 app.use('/api/absensi', absensiRoutes);
 app.use('/api/cuti', cutiRoutes);
 app.use('/api/koreksi', koreksiRoutes);
@@ -140,7 +145,7 @@ app.use('/api/notifications', notificationsRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
-    console.error('Error:', err);
+    console.error('SERVER ERROR:', err);
     res.status(err.status || 500).json({
         success: false,
         error: {
@@ -152,23 +157,40 @@ app.use((err, req, res, next) => {
 
 // Initialize server
 const startServer = async () => {
-    if (process.env.VERCEL === '1') return; // Handled by middleware on first request
+    if (process.env.VERCEL === '1') return; // Handled by middleware
 
     try {
         await initializeApp();
 
-        // Start HTTP server
         app.listen(PORT, '0.0.0.0', () => {
             console.log('='.repeat(50));
             console.log(`✓ HTTP Server running on port ${PORT}`);
-            console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`✓ Local: http://localhost:${PORT}`);
             console.log('='.repeat(50));
         });
 
-        // BACKGROUND JOBS...
-        setInterval(async () => { /* ... existing cleanup logic ... */ }, 5 * 60000);
-        setInterval(async () => { /* ... existing cleanup logic ... */ }, 60 * 60000);
+        // BACKGROUND JOBS (Non-serverless only)
+        // Cleanup deactivates
+        setInterval(async () => {
+            try {
+                const { User } = require('./models');
+                const { Op } = require('sequelize');
+                const now = new Date();
+                await User.destroy({ where: { status_aktif: false, scheduled_deletion_at: { [Op.lte]: now } } });
+            } catch (e) { console.error('Cleanup error:', e); }
+        }, 5 * 60000);
+
+        // Cleanup notifications/announcements
+        setInterval(async () => {
+            try {
+                const { Notification, Announcement } = require('./models');
+                const { Op } = require('sequelize');
+                const now = new Date();
+                const sevenDaysAgo = new Date(now - (7 * 24 * 60 * 60 * 1000));
+                await Notification.destroy({ where: { created_at: { [Op.lt]: sevenDaysAgo } } });
+                await Announcement.destroy({ where: { created_at: { [Op.lt]: sevenDaysAgo }, priority: { [Op.ne]: 'urgent' } } });
+            } catch (e) { console.error('Cleanup error:', e); }
+        }, 60 * 60000);
 
     } catch (error) {
         console.error('FATAL ERROR DURING STARTUP:', error);
