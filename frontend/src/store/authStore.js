@@ -20,9 +20,37 @@ const useAuthStore = create((set) => ({
             set({ user, isAuthenticated: true, isLoading: false });
             return true;
         } catch (error) {
+            // DEBUG: Show full error to user immediately
+            let errorMessage = 'Login failed';
+
+            if (error.response?.data) {
+                // Backend sent a response (even 500)
+                const data = error.response.data;
+
+                // Case 1: Standard API Error ({ success: false, error: { message: "..." } })
+                if (data.error?.message) {
+                    errorMessage = data.error.message;
+                }
+                // Case 2: Critical Startup Error ({ error: "CRITICAL...", message: "..." })
+                else if (data.message) {
+                    errorMessage = `Server Error: ${data.message}`;
+                    if (data.hint) errorMessage += ` (${data.hint})`;
+                }
+                // Case 3: Just a string
+                else if (typeof data.error === 'string') {
+                    errorMessage = data.error;
+                }
+
+                alert(`DEBUG ERROR FROM SERVER:\n${JSON.stringify(data, null, 2)}`);
+            } else {
+                // Network/CORS Error
+                errorMessage = `Network Error: ${error.message}. Cek koneksi atau CORS.`;
+                alert(errorMessage);
+            }
+
             set({
                 isLoading: false,
-                error: error.response?.data?.error?.message || 'Login failed'
+                error: errorMessage
             });
             return false;
         }
