@@ -4,22 +4,19 @@
 // Helper to set CORS headers safely (Native)
 const setCors = (req, res) => {
     const origin = req.headers.origin;
-    const allowedOrigins = [
-        'https://attendance-employee-app.vercel.app',
-        'http://localhost:5173',
-        'http://localhost:3000'
-    ];
 
-    // Smart origin check
-    if (origin && (allowedOrigins.some(o => origin.startsWith(o)) || origin.endsWith('.vercel.app'))) {
+    // NUCLEAR: Dynamic reflection of origin
+    // This fixes the "Wildcard + Credentials" conflict
+    if (origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
         res.setHeader('Access-Control-Allow-Origin', '*');
     }
 
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, Accept');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, Accept, Origin, Cache-Control, Pragma');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
 };
 
 module.exports = async (req, res) => {
@@ -68,7 +65,12 @@ module.exports = async (req, res) => {
         res.end(JSON.stringify({
             error: 'CRITICAL_INIT_FAILURE',
             message: error.message,
-            stack: error.stack, // Stack trace helps debug
+            stack: error.stack,
+            env_check: {
+                node_env: process.env.NODE_ENV,
+                has_db_url: !!process.env.DATABASE_URL,
+                has_db_host: !!process.env.DB_HOST
+            },
             hint: 'There is a bug in src/app.js or a missing module.'
         }));
     }

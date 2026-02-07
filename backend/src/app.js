@@ -14,27 +14,24 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-// Custom CORS Middleware IS HANDLED IN api/index.js FOR VERCEL
-// We disable it here to prevent header conflicts (Wildcard + Credentials = Error)
-/*
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
-*/
-
-// app.use(cors(...)); // Disabled in favor of manual handling
+// CORS Middleware (Only for local dev, Vercel is handled in api/index.js)
+if (process.env.VERCEL !== '1') {
+    app.use((req, res, next) => {
+        const origin = req.headers.origin;
+        if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        } else {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept,Origin');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        if (req.method === 'OPTIONS') {
+            return res.sendStatus(200);
+        }
+        next();
+    });
+}
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
