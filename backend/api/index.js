@@ -6,6 +6,16 @@ try {
 
     // Vercel Entry Point
     module.exports = (req, res) => {
+        // NUCLEAR OPTION: Hardcoded CORS at entry point
+        res.setHeader('Access-Control-Allow-Origin', '*'); // Allow ALL
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, Accept');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
         try {
             return app(req, res);
         } catch (error) {
