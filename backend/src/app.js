@@ -14,22 +14,11 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-// CORS
-const allowedOrigins = process.env.FRONTEND_URL
-    ? process.env.FRONTEND_URL.split(',').map(o => o.trim().replace(/\/$/, ''))
-    : [];
-
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin) return callback(null, true);
-        const normalized = origin.trim().replace(/\/$/, '');
-        if (allowedOrigins.includes(normalized) || normalized.includes('localhost') || normalized.endsWith('.vercel.app')) {
-            callback(null, true);
-        } else {
-            callback(new Error('CORS Error'));
-        }
-    },
-    credentials: true
+    origin: true, // Allow any origin
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -105,6 +94,15 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.get('/health', (req, res) => res.json({ status: 'awake' }));
+
+app.get('/', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Employee Attendance Backend is Running 🚀',
+        environment: process.env.NODE_ENV,
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Register routes only after DB check
 app.use(async (req, res, next) => {
