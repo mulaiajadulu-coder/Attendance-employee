@@ -35,7 +35,6 @@ module.exports = async (req, res) => {
     try {
         // 2. Load Modules ONLY when request comes (Lazy Loading)
         // This prevents "Cold Start" crashes from killing the whole function
-        // and guarantees we can catch the error to show it to you.
 
         // Force pg bundle
         try { require('pg'); } catch (e) { }
@@ -53,34 +52,11 @@ module.exports = async (req, res) => {
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
 
-        // Return JSON so we can read the actual error in browser
         res.end(JSON.stringify({
             error: 'CRITICAL_INIT_FAILURE',
             message: error.message,
-            stack: error.stack,
+            stack: error.stack, // Stack trace helps debug
             hint: 'There is a bug in src/app.js or a missing module.'
         }));
     }
 };
-console.error('STARTUP ERROR:', startupError);
-
-// 4. Fallback Handler (No dependencies allowed here!)
-module.exports = (req, res) => {
-    setCors(req, res);
-
-    if (req.method === 'OPTIONS') {
-        res.statusCode = 200;
-        res.end();
-        return;
-    }
-
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({
-        error: 'CRITICAL_STARTUP_FAILURE',
-        message: startupError.message,
-        stack: startupError.stack,
-        hint: 'Check Vercel Build Logs for missing modules.'
-    }));
-};
-}
