@@ -117,123 +117,138 @@ const startServer = async () => {
         await syncDatabase();
         console.log('Post-DB sync checkpoint');
 
-        // Ensure SSL certs exist (dev-only) - attempt generation safely (non-fatal)
-        try {
-            const certDir = path.join(__dirname, '../certs');
-            const keyPath = path.join(certDir, 'key.pem');
-            const certPath = path.join(certDir, 'cert.pem');
+        // Ensure SSL certs exist (dev-only)
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                const certDir = path.join(__dirname, '../certs');
+                const keyPath = path.join(certDir, 'key.pem');
+                const certPath = path.join(certDir, 'cert.pem');
 
-            if (!fs.existsSync(certDir) || !fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-                console.log('Certs missing or incomplete, attempting to generate (safe)...');
-                try {
-                    // run generate-cert.js which uses openssl; catch errors to avoid crashing server
-                    require('../generate-cert');
-                    console.log('Cert generation script executed (check output above)');
-                } catch (e) {
-                    console.error('Certificate generation script failed:', e && e.message ? e.message : e);
-                    // Fallback: try generating using selfsigned package (pure JS)
+                if (!fs.existsSync(certDir) || !fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+                    console.log('Certs missing or incomplete, attempting to generate (dev-only)...');
                     try {
-                        const selfsigned = require('selfsigned');
-                        const attrs = [{ name: 'commonName', value: 'localhost' }];
-                        const pems = selfsigned.generate(attrs, { days: 365 });
-                        if (pems && typeof pems.private === 'string' && typeof pems.cert === 'string') {
-                            fs.writeFileSync(keyPath, pems.private);
-                            fs.writeFileSync(certPath, pems.cert);
-                            console.log('Fallback: selfsigned certs generated and written to disk');
-                        } else {
-                            console.error('Fallback selfsigned returned invalid cert data');
+                        // run generate-cert.js which uses openssl; catch errors to avoid crashing server
+                        require('../generate-cert');
+                        console.log('Cert generation script executed (check output above)');
+                    } catch (e) {
+                        console.error('Certificate generation script failed:', e && e.message ? e.message : e);
+                        // Fallback: try generating using selfsigned package (pure JS)
+                        try {
+                            const selfsigned = require('selfsigned');
+                            const attrs = [{ name: 'commonName', value: 'localhost' }];
+                            const pems = selfsigned.generate(attrs, { days: 365 });
+                            if (pems && typeof pems.private === 'string' && typeof pems.cert === 'string') {
+                                fs.writeFileSync(keyPath, pems.private);
+                                fs.writeFileSync(certPath, pems.cert);
+                                console.log('Fallback: selfsigned certs generated and written to disk');
+                            } else {
+                                console.error('Fallback selfsigned returned invalid cert data');
+                            }
+                        } catch (e2) {
+                            console.error('Fallback selfsigned generation failed (non-fatal):', e2 && e2.message ? e2.message : e2);
                         }
-                    } catch (e2) {
-                        console.error('Fallback selfsigned generation failed (non-fatal):', e2 && e2.message ? e2.message : e2);
                     }
+                } else {
+                    console.log('Certs present, skipping generation');
                 }
-            } else {
-                console.log('Certs present, skipping generation');
+            } catch (e) {
+                console.error('Cert check error:', e.message);
             }
-        } catch (e) {
-            console.error('Error while checking/generating certs:', e);
         }
 
         console.log('Starting HTTP server...');
-        // Start HTTP server
-        app.listen(PORT, '0.0.0.0', () => {
-            console.log('='.repeat(50));
-            console.log(`âœ“ HTTP Server running on port ${PORT}`);
-            console.log(`âœ“ Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`âœ“ Local: http://localhost:${PORT}`);
-            console.log(`âœ“ Network: http://192.168.18.15:${PORT}`);
-            console.log('='.repeat(50));
-        });
+        // Only listen if not running as a serverless function (e.g. on Vercel)
+        if (process.env.VERCEL !== '1') {
+            // Start HTTP server
+            app.listen(PORT, '0.0.0.0', () => {
+                console.log('='.repeat(50));
+                console.log(`✓ HTTP Server running on port ${PORT}`);
+                console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+                console.log(`✓ Local: http://localhost:${PORT}`);
+                console.log(`✓ Network: http://192.168.18.15:${PORT}`);
+                console.log('='.repeat(50));
+            });
+        }
+
 
         // ---------------------------------------------------------
         // BACKGROUND JOB: CLEANUP DEACTIVATED USERS (30 MINUTES)
+        // Note: On Vercel (serverless), setInterval won't work reliably.
+        // For production, these should be Cron Jobs.
         // ---------------------------------------------------------
-        setInterval(async () => {
-            try {
-                const { User } = require('./models');
-                const { Op } = require('sequelize');
-                const now = new Date();
+        if (process.env.VERCEL !== '1') {
+            setInterval(async () => {
+                try {
+                    const { User } = require('./models');
+                    const { Op } = require('sequelize');
+                    const now = new Date();
 
-                const deletedCount = await User.destroy({
-                    where: {
-                        status_aktif: false,
-                        scheduled_deletion_at: { [Op.lte]: now }
+                    const deletedCount = await User.destroy({
+                        where: {
+                            status_aktif: false,
+                            scheduled_deletion_at: { [Op.lte]: now }
+                        }
+                    });
+
+                    if (deletedCount > 0) {
+                        console.log(`🗑️ [CLEANUP] Deleted ${deletedCount} users permanently after deactivation period.`);
                     }
-                });
-
-                if (deletedCount > 0) {
-                    console.log(`ðŸ§¹ [CLEANUP] Deleted ${deletedCount} users permanently after deactivation period.`);
+                } catch (cleanupErr) {
+                    console.error('❌ [CLEANUP ERROR]:', cleanupErr.message);
                 }
-            } catch (cleanupErr) {
-                console.error('âŒ [CLEANUP ERROR]:', cleanupErr.message);
-            }
-        }, 5 * 60000); // Check every 5 minutes
+            }, 5 * 60000); // Check every 5 minutes
+        }
+
 
         // ---------------------------------------------------------
         // BACKGROUND JOB: CLEANUP OLD NOTIFICATIONS & ANNOUNCEMENTS (EVERY 1 HOUR)
+        // Note: On Vercel (serverless), setInterval won't work reliably.
+        // For production, these should be Cron Jobs.
         // ---------------------------------------------------------
-        setInterval(async () => {
-            try {
-                const { Notification, Announcement } = require('./models');
-                const { Op } = require('sequelize');
-                const now = new Date();
+        if (process.env.VERCEL !== '1') {
+            setInterval(async () => {
+                try {
+                    const { Notification, Announcement } = require('./models');
+                    const { Op } = require('sequelize');
+                    const now = new Date();
 
-                // 1. Delete Notifications older than 7 days
-                const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
-                const deletedNotif = await Notification.destroy({
-                    where: { created_at: { [Op.lt]: sevenDaysAgo } }
-                });
+                    // 1. Delete Notifications older than 7 days
+                    const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+                    const deletedNotif = await Notification.destroy({
+                        where: { created_at: { [Op.lt]: sevenDaysAgo } }
+                    });
 
-                // 2. Delete Announcements
-                // Priority Urgent: older than 15 days
-                // Others: older than 7 days
-                const fifteenDaysAgo = new Date(now.getTime() - (15 * 24 * 60 * 60 * 1000));
+                    // 2. Delete Announcements
+                    // Priority Urgent: older than 15 days
+                    // Others: older than 7 days
+                    const fifteenDaysAgo = new Date(now.getTime() - (15 * 24 * 60 * 60 * 1000));
 
-                const deletedUrgent = await Announcement.destroy({
-                    where: {
-                        priority: 'urgent',
-                        created_at: { [Op.lt]: fifteenDaysAgo }
+                    const deletedUrgent = await Announcement.destroy({
+                        where: {
+                            priority: 'urgent',
+                            created_at: { [Op.lt]: fifteenDaysAgo }
+                        }
+                    });
+
+                    const deletedNormal = await Announcement.destroy({
+                        where: {
+                            priority: { [Op.ne]: 'urgent' },
+                            created_at: { [Op.lt]: sevenDaysAgo }
+                        }
+                    });
+
+                    if (deletedNotif > 0 || deletedUrgent > 0 || deletedNormal > 0) {
+                        console.log(`🧹 [CLEANUP] Deleted: ${deletedNotif} notifs, ${deletedUrgent} urgent ann, ${deletedNormal} normal ann.`);
                     }
-                });
-
-                const deletedNormal = await Announcement.destroy({
-                    where: {
-                        priority: { [Op.ne]: 'urgent' },
-                        created_at: { [Op.lt]: sevenDaysAgo }
-                    }
-                });
-
-                if (deletedNotif > 0 || deletedUrgent > 0 || deletedNormal > 0) {
-                    console.log(`🧹 [CLEANUP] Deleted: ${deletedNotif} notifs, ${deletedUrgent} urgent ann, ${deletedNormal} normal ann.`);
+                } catch (err) {
+                    console.error('🧹 [CLEANUP ERROR]:', err.message);
                 }
-            } catch (err) {
-                console.error('🧹 [CLEANUP ERROR]:', err.message);
-            }
-        }, 60 * 60000); // Check every 1 hour
+            }, 60 * 60000); // Check every 1 hour
+        }
 
     } catch (error) {
         console.error('FATAL ERROR DURING STARTUP:', error);
-        process.exit(1);
+        if (process.env.VERCEL !== '1') process.exit(1);
     }
 };
 
