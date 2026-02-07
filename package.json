@@ -1,0 +1,13 @@
+{
+  "name": "employee-attendance-root",
+  "version": "1.0.0",
+  "description": "Root package to manage employee attendance app",
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --prefix-colors \"cyan,magenta\" --names \"Backend,Frontend\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "start": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --prefix-colors \"cyan,magenta\" --names \"Backend,Frontend\" \"npm start --prefix backend\" \"npm run build --prefix frontend && npm run preview --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

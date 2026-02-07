@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Approval API</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #eee; }
+        .box { background: white; padding: 15px; border: 1px solid #ccc; margin-bottom: 10px; border-radius: 5px; }
+        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; font-size: 14px; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; border: 1px solid #ddd; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>🛠️ Debug Approval Data</h1>
+    
+    <div class="box">
+        <h3>1. Login sebagai Manager (Yudi)</h3>
+        <input type="text" id="nik" placeholder="NIK (MGR001)" value="MGR001">
+        <input type="text" id="password" placeholder="Password" value="123456">
+        <button onclick="login()">Login & Fetch Debug</button>
+        <div id="loginStatus"></div>
+    </div>
+
+    <div class="box">
+        <h3>2. Hasil API /koreksi/approvals</h3>
+        <p>Token: <span id="tokenPreview">-</span></p>
+        <p>Status: <span id="apiStatus">-</span></p>
+        <pre id="output">Data akan muncul di sini...</pre>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        let token = '';
+
+        async function login() {
+            const nik = document.getElementById('nik').value;
+            const password = document.getElementById('password').value;
+            const output = document.getElementById('output');
+            const status = document.getElementById('loginStatus');
+
+            status.innerHTML = '⏳ Logging in...';
+            output.textContent = 'Loading...';
+
+            try {
+                // 1. LOGIN
+                const res = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nik, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    status.innerHTML = `<b class="error">Login Gagal: ${data.error?.message || 'Unknown'}</b>`;
+                    return;
+                }
+
+                token = data.token;
+                document.getElementById('tokenPreview').innerText = token.substring(0, 20) + '...';
+                status.innerHTML = '<b class="success">Login Berhasil! Fetching Data...</b>';
+
+                // 2. FETCH APPROVALS
+                const approvRes = await fetch(`${API_URL}/koreksi/approvals`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const approvData = await approvRes.json();
+                document.getElementById('apiStatus').innerText = approvRes.status;
+
+                output.textContent = JSON.stringify(approvData, null, 4);
+
+            } catch (err) {
+                status.innerHTML = `<b class="error">Error System: ${err.message}</b>`;
+            }
+        }
+    </script>
+</body>
+</html>
