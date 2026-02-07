@@ -57,8 +57,21 @@ const initializeApp = async () => {
         console.log('Testing database connection...');
         await dbModels.testConnection();
 
-        if (process.env.VERCEL !== '1') {
-            await dbModels.syncDatabase();
+        // Check if DB needs sync/seed (Always run check on start)
+        console.log('Checking database schema...');
+        try {
+            await dbModels.syncDatabase(false); // alter: true inside
+
+            // Check if seeding is needed
+            const userCount = await dbModels.User.count();
+            if (userCount === 0) {
+                console.log('Database empty, seeding...');
+                const seedDatabase = require('./utils/seeder');
+                await seedDatabase();
+            }
+        } catch (syncError) {
+            console.error('Sync/Seed Error:', syncError);
+            // Don't crash, might be connection issue or already synced
         }
 
         isDbInitialized = true;
