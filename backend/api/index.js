@@ -1,62 +1,71 @@
 
-try {
-    // Force Vercel to bundle pg
-    require('pg');
+// Vercel Entry Point - Robust & Dependency-Free Fallback
 
-    // Attempt to load the app
+// Helper to set CORS headers safely (Native)
+const setCors = (req, res) => {
+    const origin = req.headers.origin;
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+};
+
+try {
+    // 1. Force Vercel to bundle pg (might fail if missing)
+    try { require('pg'); } catch (e) { console.error('PG Missing:', e.message); }
+
+    // 2. Load Express App
     const app = require('../src/app');
 
-    // Vercel Entry Point
+    // 3. Main Handler
     module.exports = (req, res) => {
-        // Vercel Entry Point
-        module.exports = (req, res) => {
-            // CORS HEADERS (Fixed: No Wildcard with Credentials)
-            const origin = req.headers.origin;
-            if (origin) {
-                res.setHeader('Access-Control-Allow-Origin', origin);
-            } else {
-                res.setHeader('Access-Control-Allow-Origin', '*');
-            }
+        // Handle CORS immediately
+        setCors(req, res);
 
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-            res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization, Accept');
-            res.setHeader('Access-Control-Allow-Credentials', 'true');
+        // Handle Preflight
+        if (req.method === 'OPTIONS') {
+            res.statusCode = 200;
+            res.end();
+            return;
+        }
 
-            if (req.method === 'OPTIONS') {
-                return res.status(200).end();
-            }
+        try {
+            return app(req, res);
+        } catch (error) {
+            console.error('RUNTIME ERROR:', error);
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+                error: 'RUNTIME_CRASH',
+                message: error.message
+            }));
+        }
+    };
 
-            try {
-                return app(req, res);
-            } catch (error) {
-                console.error('RUNTIME CRASH:', error);
-                res.status(500).json({
-                    error: 'RUNTIME_CRASH',
-                    message: error.message,
-                    stack: error.stack
-                });
-            }
-        };
-    } catch (error) {
-        console.error('CRITICAL STARTUP CRASH:', error);
+} catch (startupError) {
+    console.error('STARTUP ERROR:', startupError);
 
-        // Fallback handler if app fails to load (e.g. DB connection, missing modules)
-        const express = require('express');
-        const fallbackApp = express();
-        fallbackApp.all('*', (req, res) => {
-            // Essential CORS for Fallback
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization');
+    // 4. Fallback Handler (No dependencies allowed here!)
+    module.exports = (req, res) => {
+        setCors(req, res);
 
-            if (req.method === 'OPTIONS') return res.status(200).end();
+        if (req.method === 'OPTIONS') {
+            res.statusCode = 200;
+            res.end();
+            return;
+        }
 
-            res.status(500).json({
-                error: 'CRITICAL_STARTUP_CRASH',
-                message: error.message,
-                stack: error.stack,
-                hint: 'Dependencies might be missing. Checked: pg. Check logs for more info.'
-            });
-        });
-        module.exports = fallbackApp;
-    }
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+            error: 'CRITICAL_STARTUP_FAILURE',
+            message: startupError.message,
+            stack: startupError.stack,
+            hint: 'Check Vercel Build Logs for missing modules.'
+        }));
+    };
+}
