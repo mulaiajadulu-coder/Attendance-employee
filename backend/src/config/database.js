@@ -1,6 +1,7 @@
-
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
+
+const isProduction = process.env.NODE_ENV === 'production';
 
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -10,7 +11,7 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     port: process.env.DB_PORT || 5432,
     dialect: 'postgres',
-    logging: false, // Set to console.log only if you need to debug SQL queries
+    logging: false,
     pool: {
       max: 5,
       min: 0,
@@ -22,29 +23,25 @@ const sequelize = new Sequelize(
       underscored: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at'
-    }
+    },
+    dialectOptions: isProduction ? {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    } : {}
   }
 );
 
-// Test connection
 const testConnection = async () => {
   try {
     await sequelize.authenticate();
     console.log('✓ Database connection established successfully');
+    return true;
   } catch (error) {
     console.error('✗ Unable to connect to database:', error.message);
-    throw error; // Let the caller handle it instead of exiting the process
+    throw error;
   }
 };
-
-const isProduction = process.env.NODE_ENV === 'production';
-if (isProduction) {
-  sequelize.options.dialectOptions = {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false // Necessary for many cloud DB providers like Supabase/Render
-    }
-  };
-}
 
 module.exports = { sequelize, testConnection };
